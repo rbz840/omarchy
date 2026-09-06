@@ -40,8 +40,13 @@ COPY --from=alarm-rootfs /alarm-root/ /
 
 ENV LANG=C.UTF-8
 
-# Retry-friendly pacman setup for container bootstrap (ALARM repos)
-RUN pacman-key --init \
+# Retry-friendly pacman setup for container bootstrap (ALARM repos).
+# DisableSandbox: pacman 6.1+ sandboxes DB syncs with Landlock + the 'alpm'
+# user, which BuildKit's seccomp profile blocks ("Landlock ruleset could not
+# be applied") — we run as root in a throwaway build container, so the
+# sandbox buys nothing. No `|| true`: a failed pacman must fail the build.
+RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
+ && pacman-key --init \
  && pacman -Syu --noconfirm --needed \
       arch-install-scripts \
       archiso \
@@ -54,7 +59,7 @@ RUN pacman-key --init \
       git \
       curl \
       jq \
- && pacman -Scc --noconfirm || true
+ && pacman -Scc --noconfirm
 
 # Import the Arch Linux ARM build-system signing key into the container
 # keyring. pacstrap copies this keyring into the target rootfs, which lets
