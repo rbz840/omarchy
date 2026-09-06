@@ -76,7 +76,10 @@ check_file() {
 check_file "kernel_2712.img"     "Pi 5 kernel"
 check_file "config.txt"          "Firmware config"
 check_file "cmdline.txt"         "Kernel cmdline"
-check_file "vc4-kms-v3d-pi5.dtbo" "V3D KMS overlay"
+# dtoverlay=vc4-kms-v3d-pi5 resolves relative to overlays/ (canonical Pi
+# layout — verified live in CI: the ESP-root path was a gate bug that the
+# fixture self-test caught)
+check_file "overlays/vc4-kms-v3d-pi5.dtbo" "V3D KMS overlay"
 
 # config.txt must select the Pi 5 kernel explicitly
 if grep -q '^kernel=kernel_2712.img' "$MNT/config.txt"; then
