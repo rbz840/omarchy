@@ -50,20 +50,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Make p1/p2 visible for $LOOPDEV. losetup --partscan fails to create the
-# partition block devices when the host loaded the loop module with
-# max_part=0 (observed on hosted CI runners). Strategy: retry a few seconds
-# (slow udev), then re-read the table (partprobe), then add the partitions
-# via BLKPG ioctls (partx -a) which works independently of max_part.
+# Make p1/p2 visible for $LOOPDEV. Three container/CI gotchas stack here:
+#   1. the loop module may be loaded with max_part=0 -> --partscan creates no
+#      partition objects at all;
+#   2. slow udev on hosted runners -> give it a few seconds;
+#   3. Docker's /dev is a tmpfs snapshot: even when the kernel registers
+#      loopXp1/loopXp2, the nodes never appear in the container's /dev because
+#      no udev runs inside. Fix: read major:minor from /sys (which IS the host
+#      sysfs) and mknod the nodes manually.
 ensure_loop_partitions() {
-  local dev="$1" i
+  local dev="$1" i base syspart majmin
+  base="${dev##*/}"           # loop0
   for i in 1 2 3 4 5; do
     [[ -e "${dev}p1" && -e "${dev}p2" ]] && return 0
     sleep 1
   done
   partprobe "$dev" 2>/dev/null || true
-  [[ -e "${dev}p1" && -e "${dev}p2" ]] && return 0
   partx -a "$dev" 2>/dev/null || true
+  [[ -e "${dev}p1" && -e "${dev}p2" ]] && return 0
+  # Kernel-side partitions exist? Materialize the /dev nodes ourselves.
+  for syspart in "/sys/block/$base/$base"p1 "/sys/block/$base/$base"p2; do
+    [[ -r "$syspart/dev" ]] || continue
+    majmin="$(cat "$syspart/dev")"
+    mknod "${dev}${syspart##*/$base}" b "${majmin%%:*}" "${majmin##*:}" 2>/dev/null \
+      || mknod "${dev}$(basename "$syspart")" b "${majmin%%:*}" "${majmin##*:}"
+    [[ -e "${dev}$(basename "$syspart")" ]] && chmod 660 "${dev}$(basename "$syspart")"
+  done
   [[ -e "${dev}p1" && -e "${dev}p2" ]]
 }
 
