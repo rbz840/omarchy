@@ -130,13 +130,27 @@ if (( BUILD_IMG )); then
   # fstab is generated at firstboot (UUIDs known only on target hardware);
   # a template is shipped in build/rootfs/etc/fstab.pi-template.
 
+  # 4.5 Regenerate the initramfs INSIDE the rootfs so the omarchy-pi-esp hook
+  # and forced modules (virtio/ext4/nvme/mmc_block) are actually embedded —
+  # pacstrap's initramfs predates the 4.3 overlay and would ship without them.
+  log "Regenerating initramfs (omarchy-pi-esp hook + forced modules)"
+  arch-chroot "$ROOT" mkinitcpio -P \
+    || die "mkinitcpio -P failed in rootfs — initramfs would lack the ESP hook"
+
   # 5. Boot configuration -----------------------------------------------------
   # $ROOT/boot IS the ESP (partition p1): pacstrap already wrote firmware,
   # kernel_2712.img, initramfs, DTBs and overlays there via raspberrypi-bootloader
   # + linux-rpi. Only our Omarchy boot config remains to be applied.
   log "Applying Omarchy boot config (config.txt, cmdline.txt) to the ESP"
   cp "$BOOT_CONFIG/config.txt" "$ROOT/boot/config.txt"
-  cp "$BOOT_CONFIG/cmdline.txt" "$ROOT/boot/cmdline.txt"
+  # Inject the ACTUAL root PARTUUID into cmdline.txt: the template cannot know
+  # it, and a hardcoded /dev/mmcblk0p2 would kernel-panic on a pristine NVMe
+  # (or USB) boot before the ESP hook ever runs. The hook still repairs later
+  # corruption, rewriting root= to whatever medium it booted from.
+  P2_PARTUUID=$(blkid -s PARTUUID -o value "${LOOPDEV}p2")
+  [[ -n "$P2_PARTUUID" ]] || die "cannot read PARTUUID of the root partition"
+  sed "s|root=[^ ]*|root=PARTUUID=${P2_PARTUUID}|" "$BOOT_CONFIG/cmdline.txt" > "$ROOT/boot/cmdline.txt"
+  log "cmdline.txt root=PARTUUID=$P2_PARTUUID"
   sync
 
   # 6. Optional archiso build -------------------------------------------------
