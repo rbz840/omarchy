@@ -139,3 +139,10 @@ log "Fixture written: $FIXTURE"
 if (( OMIT_CMDLINE )); then log "  (negative fixture: cmdline.txt omitted)"; fi
 if (( OMIT_HOOK ));    then log "  (negative fixture: omarchy-pi-esp hook omitted)"; fi
 if (( OMIT_DTB ));     then log "  (negative fixture: bcm2712 DTBs omitted)"; fi
+
+# When run under sudo, hand the outputs (and the out dir) back to the invoking
+# user — otherwise later non-root steps (rm/ls in CI, local cleanup) hit
+# "Permission denied" on the root-owned directory.
+if [[ -n "${SUDO_USER:-}" ]]; then
+  chown -R "$SUDO_USER" "$OUT_DIR"
+fi
