@@ -1,0 +1,79 @@
+# build/packages/drop.txt — x86_64-only Omarchy packages deliberately excluded
+# from the ARM64/Pi 5 build, with the reason for each exclusion.
+# Format: <package> <reason>
+# Verified against omacom/omarchy @ quattro (2026-09-06).
+
+# --- Kernel / boot (x86 chain replaced by Pi-native chain) ---
+linux                       # x86 vanilla kernel -> linux-rpi (docs/02 §D2)
+linux-headers               # x86 headers -> linux-rpi-headers
+linux-ptl                   # Intel Panther Lake kernel — no Pi 5 relevance
+linux-ptl-headers
+linux-t2                    # T2 MacBook kernel — no ARM64
+linux-t2-headers
+limine                      # x86 BIOS/UEFI bootloader — Pi uses native firmware boot
+limine-mkinitcpio-hook
+limine-snapper-sync
+
+# --- GPU / video (x86 stacks replaced by Broadcom VideoCore) ---
+nvidia-dkms
+nvidia-open-dkms
+nvidia-580xx-dkms
+nvidia-utils
+nvidia-580xx-utils
+lib32-nvidia-utils
+lib32-nvidia-580xx-utils
+libva-nvidia-driver
+intel-media-driver          # Intel VAAPI -> V4L2-request (Pi 5)
+libva-intel-driver
+libvpl                      # Intel VPL -> V4L2-request
+vpl-gpu-rt
+vulkan-intel                # -> vulkan-broadcom (v3dv)
+vulkan-radeon
+vulkan-asahi
+intel-ipu7-camera           # Intel camera ISP — no Pi 5 relevance
+intel-lpmd                  # Intel Low Power daemon
+sof-firmware                # Sound Open Firmware (Intel DSP) — Pi 5 audio via snd_bcm2835
+thermald                    # Intel thermal daemon — Pi 5 uses DT-based thermal + firmware fan
+
+# --- x86 / vendor laptop support (no Pi 5 relevance) ---
+asusctl                     # ASUS ROG laptops
+dell-xps-touchpad-haptics
+dell-xps13-sidecar-amps
+tuxedo-drivers-nocompatcheck-dkms
+yt6801-dkms                 # Yeestor ethernet DKMS (x86 NIC)
+broadcom-wl                 # x86 Broadcom STA driver (not CYW43455; Pi uses brcmfmac)
+linux-firmware-marvell      # Surface laptop firmware
+macbook12-spi-driver-dkms   # T2 MacBooks
+apple-bcm-firmware          # T2 MacBooks
+apple-t2-audio-config       # T2 MacBooks
+t2fanrd                     # T2 fan daemon
+qmk-hid                     # Framework 16
+
+# --- x86-accel tooling replaced by Pi equivalents ---
+gpu-screen-recorder         # VAAPI-based; replaced by wf-recorder (in ALARM repos) / CPU
+qemu-user-static-binfmt     # absent from ALARM + AUR under this name on 2026-09-06;
+                            # cross-arch emulation not needed on a native Pi 5
+
+# --- Ghosts: absent from ALARM repos AND AUR (checked 2026-09-06) ---
+# These names appear in upstream Omarchy's package lists but resolve to nothing
+# installable on aarch64 (and are not shipped in this repo's bin/ either).
+asdcontrol                  # not on AUR, not in ALARM
+omacalc                     # not on AUR, not in ALARM
+omacut                      # not on AUR, not in ALARM
+omawrite                    # not on AUR, not in ALARM
+omarchy-nvim                # not on AUR, not in ALARM
+                            # (neovim IS installed — see base list)
+tobi-try                    # not on AUR, not in ALARM
+ttfx                        # not on AUR, not in ALARM
+mpv-rpi                     # not on AUR (repo mpv + repo ffmpeg; v4l2request hwdec absent from both, verified 2026-09-06)
+ffmpeg-rpi                  # IN ALARM [alarm] but: Pi 3/4/400 (MMAL-era) 7.1 build; conflicts only ffmpeg4.4; provides 7.1 sonames; 0/13295 ALARM pkgs depend on it — repo 'ffmpeg' is the correct dependency
+obs-studio                  # not packaged in ALARM repos; AUR name is free
+                            # -> use wf-recorder (repo) for screen recording
+dotnet-runtime              # not packaged in ALARM repos
+pinta                       # stable AUR pkg absent; use AUR 'pinta-git'
+raspberrypi-userland        # renamed on ALARM -> 'raspberrypi-utils'
+vulkan-icd-manager          # does not exist on Arch/ALARM (icd-loader suffices)
+ttf-jetbrains-mono-nerd-basic  # renamed -> 'ttf-jetbrains-mono-nerd'
+hyprland-preview-share-picker  # AUR only as 'hyprland-preview-share-picker-git'
+vi                             # not packaged in ALARM repos (neovim/vim cover it)
+                               # yay + tzupdate: AUR packages -> see build/packages/aur.txt

@@ -1,0 +1,190 @@
+# build/packages/omarchy-pi5-base.packages — core package list.
+# Same desktop identity (Hyprland, Quickshell, agents) on aarch64.
+# Lines starting with # are comments. Installed by install/pi/03-pacstrap.sh
+# (and preinstalled by build/build-image.sh for the image build).
+#
+# VERIFIED 2026-09-06 against the live ALARM databases
+# (tests/check-pkg-availability.sh — all entries below exist in
+#  core/extra/alarm/aur repos of mirror.archlinuxarm.org).
+# Only repo packages belong here; AUR packages live in build/packages/aur.txt.
+
+# --- Base system ---
+base
+base-devel
+linux-rpi
+linux-rpi-headers
+raspberrypi-bootloader
+raspberrypi-overlays
+raspberrypi-utils
+firmware-raspberrypi
+rpi5-eeprom
+wireless-regdb
+linux-firmware
+e2fsprogs
+btrfs-progs
+dosfstools
+exfatprogs
+util-linux
+sudo
+openssh
+networkmanager
+wpa_supplicant
+iwd
+bluez
+bluez-utils
+avahi
+nss-mdns
+mkinitcpio
+zram-generator
+snapper
+cronie
+
+# --- Desktop stack (Omarchy identity) ---
+hyprland
+hyprland-guiutils
+hyprpicker
+hyprsunset
+uwsm
+sddm
+quickshell
+foot
+wl-clipboard
+cliphist
+grim
+slurp
+wtype
+imv
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+gtk4-layer-shell
+qt6-wayland
+egl-wayland
+qt6-imageformats
+
+# --- GPU / video accel (Broadcom VideoCore VI) ---
+mesa
+vulkan-broadcom
+vulkan-icd-loader
+vulkan-tools
+libglvnd
+mpv
+# Stock ALARM 'ffmpeg' (9.x, sonames libavcodec.so=63...). NOT ffmpeg-rpi:
+# that package (7.1.5) is for RPi 3/4/400 (MMAL-era), provides ffmpeg-7.1
+# sonames, conflicts nothing of 'ffmpeg', and NOTHING in ALARM links it
+# (verified 2026-09-06: 0/13295 ALARM packages depend on it). Installing both
+# would pull two parallel ffmpeg stacks. The Pi 5 HEVC path is
+# kernel linux-rpi (rpivid) + mpv --hwdec=drm (GPU compositing of
+# software-decoded frames) or an ffmpeg built with --enable-v4l2-request
+# (mainlined in FFmpeg 8.0; stock ALARM 9.0.1 does NOT enable it — see
+# tests/validate-pi-hardware.sh for the on-Pi hwdec probe).
+ffmpeg
+gst-plugin-pipewire
+gst-plugins-base
+ffmpegthumbnailer
+
+# --- Audio ---
+pipewire
+pipewire-alsa
+pipewire-pulse
+pipewire-jack
+wireplumber
+alsa-utils
+alsa-ucm-conf
+pamixer
+pavucontrol
+
+# --- CLI tools (Omarchy identity) ---
+bash-completion
+bat
+btop
+chromium
+curl
+fastfetch
+fd
+fzf
+git
+gnome-keyring
+gnome-themes-extra
+gvfs-mtp
+gvfs-nfs
+gvfs-smb
+imagemagick
+inetutils
+inotify-tools
+inxi
+jq
+lazydocker
+lazygit
+less
+libsecret
+libvips
+libyaml
+lua51
+luarocks
+man-db
+mariadb-libs
+mpv-mpris
+nautilus
+nautilus-python
+gnome-disk-utility
+neovim
+noto-fonts
+noto-fonts-cjk
+noto-fonts-emoji
+pacman-contrib
+plocate
+postgresql-libs
+python-gobject
+python-poetry-core
+qrencode
+ripgrep
+ruby
+socat
+starship
+sushi
+system-config-printer
+tesseract
+tesseract-data-eng
+tldr
+tree-sitter-cli
+tmux
+ttf-jetbrains-mono-nerd
+udiskie
+ufw
+unzip
+whois
+woff2-font-awesome
+xdg-user-dirs
+yt-dlp
+zbar
+zoxide
+
+# --- Desktop extras ---
+evince
+fcitx5
+fcitx5-gtk
+fcitx5-qt
+fontconfig
+kdenlive
+libreoffice-fresh
+brightnessctl
+ddcutil
+docker
+docker-buildx
+docker-compose
+dua-cli
+eza
+expac
+fakeroot
+gum
+ntfs-3g
+power-profiles-daemon
+plymouth
+kernel-modules-hook
+nss
+webp-pixbuf-loader
+
+# --- Tools available in ALARM repos (formerly AUR) ---
+usage
+wf-recorder
+moonlight-qt

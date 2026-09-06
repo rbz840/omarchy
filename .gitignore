@@ -1,0 +1,13 @@
+# Local tooling state
+.freebuff/
+
+# Build outputs
+out/
+qemu-test-logs/
+*.img
+*.img.zst
+*.img.xz
+
+# Archiso work dirs
+archiso-work/
+work/

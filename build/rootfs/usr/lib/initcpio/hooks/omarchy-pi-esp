@@ -1,0 +1,115 @@
+# /usr/lib/initcpio/hooks/omarchy-pi-esp — mkinitcpio runtime hook.
+#
+# Runs in early userspace (before root mount), after the udev/systemd hook.
+# Two jobs:
+#   1. Wait for the boot medium (NVMe/USB enumerate asynchronously) so the
+#      root mount never races device discovery.
+#   2. ESP self-repair: if cmdline.txt or config.txt is missing/empty on the
+#      ESP (FAT corruption, interrupted write, manual slip), restore pristine
+#      copies embedded in the initramfs — rewriting root= to the ACTUAL boot
+#      medium so a repair on NVMe does not inherit the SD template path.
+#
+# NOTE: POSIX sh on purpose — mkinitcpio early userspace is busybox ash
+# (no bash, no [[ ]]). This is a deliberate exception to the repo's bash-5
+# style rule, which applies to normal repo scripts.
+#
+# No-op when everything is already fine (idempotent; zero writes).
+
+run_hook() {
+    # --- Parse kernel cmdline -------------------------------------------------
+    local root_dev="" rootdelay=0 p
+    for p in $(cat /proc/cmdline); do
+        case "$p" in
+            root=*)      root_dev="${p#root=}" ;;
+            rootdelay=*) rootdelay="${p#rootdelay=}" ;;
+        esac
+    done
+    [ -n "$root_dev" ] || { echo "omarchy-pi-esp: no root= on cmdline, skipping"; return 0; }
+
+    # Resolve UUID/LABEL forms to /dev paths (udev has run by now)
+    case "$root_dev" in
+        UUID=*)     root_dev="/dev/disk/by-uuid/${root_dev#UUID=}" ;;
+        PARTUUID=*) root_dev="/dev/disk/by-partuuid/${root_dev#PARTUUID=}" ;;
+        LABEL=*)    root_dev="/dev/disk/by-label/${root_dev#LABEL=}" ;;
+    esac
+
+    # --- 1. Wait for the boot medium ------------------------------------------
+    # Belt and braces: rootwait handles the common case at kernel level; this
+    # covers initramfs-observable enumeration (e.g. slow USB3 bridges, NVMe
+    # link training) that can still race early userspace.
+    local timeout=$(( rootdelay + 30 )) i=0
+    while [ ! -e "$root_dev" ] && [ "$i" -lt "$timeout" ]; do
+        [ $((i % 5)) -eq 0 ] && \
+            echo "omarchy-pi-esp: waiting for boot medium $root_dev ($i/${timeout}s)"
+        sleep 1
+        i=$(( i + 1 ))
+    done
+    if [ ! -e "$root_dev" ]; then
+        echo "omarchy-pi-esp: boot medium $root_dev not found after ${timeout}s — cannot verify ESP"
+        return 0
+    fi
+
+    # Canonical /dev path (root_dev may be a /dev/disk/by-* symlink)
+    root_dev="$(readlink -f "$root_dev" 2>/dev/null || echo "$root_dev")"
+    echo "omarchy-pi-esp: boot medium ready: $root_dev"
+
+    # --- Derive the ESP (partition 1 on the same medium) ----------------------
+    # /dev/nvme0n1p2 -> /dev/nvme0n1p1   /dev/mmcblk0p2 -> /dev/mmcblk0p1
+    # /dev/sda2      -> /dev/sda1
+    local parent="$root_dev" sep=""
+    while :; do
+        case "$parent" in
+            *[!0-9]) break ;;
+            *) parent="${parent%?}" ;;
+        esac
+    done
+    case "$parent" in
+        *[0-9]p) parent="${parent%p}" ; sep="p" ;;
+    esac
+    local esp_dev="${parent}${sep}1"
+
+    if [ ! -e "$esp_dev" ]; then
+        echo "omarchy-pi-esp: ESP $esp_dev not found — skipping repair"
+        return 0
+    fi
+
+    # --- 2. ESP repair ---------------------------------------------------------
+    local mnt="/run/omarchy-pi-esp"
+    [ -d /run ] || mnt="/tmp/omarchy-pi-esp"
+    mkdir -p "$mnt"
+
+    if ! mount -t vfat -o rw "$esp_dev" "$mnt" 2>/dev/null; then
+        echo "omarchy-pi-esp: vfat mount failed on $esp_dev — attempting fsck.vfat -a"
+        if command -v fsck.vfat >/dev/null 2>&1; then
+            fsck.vfat -a "$esp_dev" >/dev/null 2>&1
+        fi
+        if ! mount -t vfat -o rw "$esp_dev" "$mnt" 2>/dev/null; then
+            echo "omarchy-pi-esp: cannot mount ESP — giving up (boot continues)"
+            return 0
+        fi
+    fi
+
+    local fixed=0
+    # cmdline.txt missing/empty -> restore pristine copy with the ACTUAL root=
+    if [ ! -s "$mnt/cmdline.txt" ] && [ -s /etc/omarchy-pi-boot/cmdline.txt ]; then
+        sed "s|root=[^ ]*|root=${root_dev}|" /etc/omarchy-pi-boot/cmdline.txt > "$mnt/cmdline.txt"
+        sync
+        fixed=1
+        echo "omarchy-pi-esp: RESTORED missing cmdline.txt (root=${root_dev})"
+    fi
+    # config.txt missing/empty -> restore pristine copy
+    if [ ! -s "$mnt/config.txt" ] && [ -s /etc/omarchy-pi-boot/config.txt ]; then
+        cp /etc/omarchy-pi-boot/config.txt "$mnt/config.txt"
+        sync
+        fixed=1
+        echo "omarchy-pi-esp: RESTORED missing config.txt"
+    fi
+    # Informational only: never clobber a user-edited config.txt over one line
+    if [ -s "$mnt/config.txt" ] && ! grep -q '^kernel=kernel_2712.img' "$mnt/config.txt"; then
+        echo "omarchy-pi-esp: WARNING: config.txt lacks kernel=kernel_2712.img"
+    fi
+
+    umount "$mnt"
+    [ "$fixed" = 1 ] || echo "omarchy-pi-esp: ESP verified, no repair needed"
+    return 0
+}

@@ -1,0 +1,204 @@
+name: Build ARM64 image (Raspberry Pi 5)
+
+# Weekly (and on-demand) build of the Omarchy ARM64 Pi 5 image.
+#
+# Why this setup:
+# - `ubuntu-24.04-arm` is a native aarch64 runner: no QEMU/binfmt emulation,
+#   the builder container runs at full speed.
+# - The build goes through build/build.sh (Docker path) so CI and local builds
+#   share the exact same logic and the same Arch Linux ARM tooling; the
+#   container is privileged (loop devices for partitioning/mkfs).
+# - The .img nominal size is 8G and mostly sparse; the first boot on the Pi
+#   expands the rootfs to fill the medium. zstd level 9 brings it well under
+#   GitHub's 2 GiB per-file release asset limit.
+# - Outputs: a release tagged vYYYY.MM.DD with the .img.zst + .sha256 assets,
+#   plus a workflow artifact (14-day retention).
+
+on:
+  schedule:
+    # Every Monday 04:00 UTC
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      draft_release:
+        description: "Create the GitHub Release as a draft for manual review"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # create the release and upload assets
+
+env:
+  IMAGE_SIZE: "8G"
+  IMAGE_NAME: omarchy-arm64-rpi5
+  ZSTD_LEVEL: "9"
+
+jobs:
+  build:
+    name: Build & release image
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show runner info
+        run: |
+          uname -a
+          df -h /
+          nproc
+          free -h
+          docker version
+
+      - name: Verify build environment
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == "aarch64" ]] || { echo "FATAL: runner is not aarch64" >&2; exit 1; }
+          docker info >/dev/null
+          sudo -n true # passwordless sudo available by default on hosted runners
+          command -v zstd curl jq git
+
+      - name: Install host tools
+        run: |
+          sudo apt-get update
+          # cpio: used by tests/verify-image.sh to inspect the initramfs
+          # qemu-system-arm: qemu-system-aarch64 for tests/qemu-esp-restore-test.sh
+          sudo apt-get install -y --no-install-recommends zstd curl jq cpio qemu-system-arm
+
+      - name: Package availability checks (fail fast)
+        run: |
+          set -euo pipefail
+          # Refuse to spend an hour building an image that cannot install:
+          # every entry in build/packages/*.packages must exist in an ALARM
+          # repo, and every aur.txt entry must exist in the AUR.
+          bash tests/check-pkg-availability.sh
+          bash tests/check-aur-availability.sh
+
+      - name: Compute build identifiers
+        run: |
+          echo "DATE_TAG=$(date +%Y.%m.%d)" >> "$GITHUB_ENV"
+          echo "IMG_NAME=${IMAGE_NAME}-$(date +%Y%m%d)" >> "$GITHUB_ENV"
+
+      - name: Build the image (Docker builder, native arm64)
+        run: |
+          ./build/build.sh \
+            --output "$GITHUB_WORKSPACE/out" \
+            --size "$IMAGE_SIZE" \
+            --name "$IMG_NAME" \
+            --no-iso
+
+      - name: Fix ownership of build outputs
+        run: |
+          [[ -d out ]] || { echo "FATAL: out/ not created" >&2; exit 1; }
+          sudo chown -R "$(id -u):$(id -g)" out
+          ls -lh out
+
+      - name: Verify image contents (release gate)
+        run: |
+          sudo ./tests/verify-image.sh "out/$IMG_NAME.img"
+
+      - name: QEMU ESP self-repair test (omarchy-pi-esp hook)
+        run: |
+          # End-to-end: boots the image's real kernel+initramfs twice in QEMU
+          # (tcg emulation), deletes cmdline.txt from the ESP between boots,
+          # and asserts the hook restores it with the actual root= device.
+          # Runs on the uncompressed image, before the release gate can pass.
+          sudo ./tests/qemu-esp-restore-test.sh "out/$IMG_NAME.img"
+
+      - name: Upload QEMU test logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-esp-test-logs-${{ env.DATE_TAG }}
+          path: |
+            qemu-test-logs/*
+            out/*.log
+          if-no-files-found: ignore
+
+      - name: Compress the image (zstd)
+        run: |
+          set -euo pipefail
+          cd out
+          [[ -f "$IMG_NAME.img" ]] || { echo "FATAL: $IMG_NAME.img not found" >&2; ls -la; exit 1; }
+          zstd -T0 -"$ZSTD_LEVEL" -k --no-progress "$IMG_NAME.img" -o "$IMG_NAME.img.zst"
+          rm -f "$IMG_NAME.img"
+          echo "Compressed: $(du -h "$IMG_NAME.img.zst" | cut -f1)"
+
+      - name: Generate SHA256 checksum
+        run: |
+          set -euo pipefail
+          cd out
+          sha256sum "$IMG_NAME.img.zst" | tee "$IMG_NAME.img.zst.sha256"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: omarchy-arm64-rpi5-${{ env.DATE_TAG }}
+          path: |
+            out/*.img.zst
+            out/*.sha256
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="v${DATE_TAG}"
+          ZST="${IMG_NAME}.img.zst"
+          SHA="${ZST}.sha256"
+
+          # Release notes (printf-based to avoid heredoc/indentation pitfalls)
+          {
+            echo "Automated weekly build of the Omarchy ARM64 Raspberry Pi 5 image."
+            echo
+            echo "**Image**: \`$ZST\`"
+            echo
+            echo "## Install"
+            echo "1. Download both assets."
+            echo "2. Verify: \`sha256sum -c $SHA\`"
+            echo "3. Decompress: \`zstd -d $ZST\`"
+            echo "4. Flash: \`sudo dd if=${ZST%.zst} of=/dev/sdX bs=4M conv=fsync status=progress\`"
+            echo "   (or use Raspberry Pi Imager / balenaEtcher)"
+            echo "5. First boot expands the filesystem and installs the desktop (~15-25 min)."
+            echo
+            echo "Full guide: [docs/03-install-guide.md](https://github.com/rbz840/omarchy/blob/quattro/docs/03-install-guide.md)"
+          } > release-notes.md
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — replacing assets"
+          else
+            if [[ "${{ inputs.draft_release }}" == "true" ]]; then
+              gh release create "$TAG" \
+                --draft \
+                --title "Omarchy ARM64 for Raspberry Pi 5 — ${DATE_TAG}" \
+                --notes-file release-notes.md
+            else
+              gh release create "$TAG" \
+                --title "Omarchy ARM64 for Raspberry Pi 5 — ${DATE_TAG}" \
+                --notes-file release-notes.md
+            fi
+          fi
+
+          gh release upload "$TAG" "out/$ZST" "out/$SHA" --clobber
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Omarchy ARM64 Pi 5 build summary"
+            echo
+            echo "- Date tag: \`${DATE_TAG:-unknown}\`"
+            echo "- Runner: \`$(uname -m)\` (native, no emulation)"
+            if compgen -G "out/*.img.zst" >/dev/null; then
+              echo "- Compressed image: $(ls -lh out/*.img.zst | awk '{print $5, $9}')"
+              echo
+              echo '```'
+              cat out/*.sha256
+              echo '```'
+            else
+              echo "- No image produced (see build logs)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

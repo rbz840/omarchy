@@ -1,0 +1,6 @@
+# Normalize line endings: LF in the repo and on every checkout.
+# Shell scripts and boot files MUST never carry CRLF (initramfs hooks, ESP
+# files, docker RUN commands all break otherwise).
+* text=auto eol=lf
+*.png binary
+*.img binary

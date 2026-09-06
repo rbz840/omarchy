@@ -1,0 +1,20 @@
+# archiso profile package list for arch=aarch64 (archiso reads packages.$arch).
+arch-install-scripts
+btrfs-progs
+dosfstools
+e2fsprogs
+git
+iwd
+linux-rpi
+linux-firmware
+mkinitcpio
+networkmanager
+neovim
+openssh
+parted
+raspberrypi-bootloader
+firmware-raspberrypi
+rsync
+sudo
+vim
+zram-generator

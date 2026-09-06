@@ -1,0 +1,89 @@
+name: Release-gate self-test (fixture image)
+
+# Exercises tests/verify-image.sh (the release gate) on EVERY push, without a
+# full image build: a 64 MiB synthetic Pi 5 image (tests/make-fixture-image.sh)
+# is assembled from the repo's real boot templates + hook, then:
+#   - the complete fixture must PASS the gate          (no false negatives)
+#   - --omit-cmdline / --omit-dtb / --omit-hook variants must FAIL it
+#                                                      (no false positives)
+# If the gate ever stops catching a broken image, this workflow goes red.
+# Runner: ubuntu-24.04 (x86_64 is fine — the gate does not care about arch).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Release-gate self-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install host tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # cpio: initramfs listing fallback in verify-image.sh
+          # gdisk: partitioning in make-fixture-image.sh
+          sudo apt-get install -y --no-install-recommends cpio gdisk zstd curl
+
+      - name: Build fixture image (positive)
+        run: |
+          set -euo pipefail
+          sudo ./tests/make-fixture-image.sh out
+          ls -lh out/fixture.img
+
+      - name: Gate must PASS on the complete fixture
+        run: |
+          set -euo pipefail
+          sudo ./tests/verify-image.sh out/fixture.img
+
+      - name: Gate must FAIL without cmdline.txt
+        run: |
+          set -euo pipefail
+          rm -f out/fixture.img
+          sudo ./tests/make-fixture-image.sh --omit-cmdline out
+          if sudo ./tests/verify-image.sh out/fixture.img >/dev/null 2>&1; then
+            echo "GATE LEAK: missing cmdline.txt was NOT caught" >&2
+            exit 1
+          fi
+          echo "OK: gate correctly rejected the image (cmdline.txt missing)"
+
+      - name: Gate must FAIL without bcm2712 DTBs
+        run: |
+          set -euo pipefail
+          rm -f out/fixture.img
+          sudo ./tests/make-fixture-image.sh --omit-dtb out
+          if sudo ./tests/verify-image.sh out/fixture.img >/dev/null 2>&1; then
+            echo "GATE LEAK: missing bcm2712 DTB was NOT caught" >&2
+            exit 1
+          fi
+          echo "OK: gate correctly rejected the image (bcm2712 DTB missing)"
+
+      - name: Gate must FAIL without the omarchy-pi-esp hook
+        run: |
+          set -euo pipefail
+          rm -f out/fixture.img
+          sudo ./tests/make-fixture-image.sh --omit-hook out
+          if sudo ./tests/verify-image.sh out/fixture.img >/dev/null 2>&1; then
+            echo "GATE LEAK: missing omarchy-pi-esp hook was NOT caught" >&2
+            exit 1
+          fi
+          echo "OK: gate correctly rejected the image (omarchy-pi-esp hook missing)"
+
+      - name: Upload gate output (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-selftest-logs
+          path: out/
+          if-no-files-found: ignore

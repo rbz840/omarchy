@@ -1,0 +1,55 @@
+#!/bin/bash
+# /usr/lib/initcpio/install/omarchy-pi-esp — mkinitcpio build-time hook.
+#
+# Adds to the initramfs:
+#   - pristine build/boot/{cmdline.txt,config.txt} as ESP-repair templates,
+#     preferring the repo copy (/opt/omarchy/build/boot), falling back to the
+#     live ESP (/boot on the Pi);
+#   - the runtime script (hooks/omarchy-pi-esp, via add_runscript);
+#   - vfat + NLS modules and fsck.vfat so the hook can mount/repair the ESP.
+
+build() {
+    # Source paths resolve against the CURRENT root (host or chroot), not
+    # $BUILDROOT: /opt/omarchy/build/boot during image build and on the Pi,
+    # /boot (the ESP itself) as on-Pi fallback.
+    local repo_dir="/opt/omarchy/build/boot"
+    local boot_dir="/boot"
+    local f
+
+    for f in cmdline.txt config.txt; do
+        if [[ -s "$repo_dir/$f" ]]; then
+            add_file "$repo_dir/$f" "/etc/omarchy-pi-boot/$f"
+        elif [[ -s "$boot_dir/$f" ]]; then
+            add_file "$boot_dir/$f" "/etc/omarchy-pi-boot/$f"
+        else
+            warning "omarchy-pi-esp: no pristine $f found (looked in $repo_dir and $boot_dir); ESP repair for $f disabled"
+        fi
+    done
+
+    add_runscript
+
+    # ESP is FAT32 — vfat + codepage modules, and fsck for corrupt-FAT repair
+    add_module 'vfat'
+    add_module 'nls_cp437'
+    add_module 'nls_ascii'
+    add_module 'nls_iso8859_1'
+    local b
+    for b in dosfsck fsck.vfat; do
+        if [[ -e "$BUILDROOT/usr/bin/$b" ]]; then
+            add_binary "/usr/bin/$b"
+        fi
+    done
+}
+
+help() {
+    cat <<HELPEOF
+This hook waits for the Pi 5 boot medium (NVMe/USB enumerate asynchronously)
+and repairs the ESP if cmdline.txt or config.txt is missing/empty, restoring
+pristine copies embedded in the initramfs (with root= rewritten to the actual
+boot medium). No-op when the ESP is intact.
+
+Add 'omarchy-pi-esp' to HOOKS — after udev (or systemd), order otherwise
+irrelevant. Configuration: none; honors rootdelay= from the kernel cmdline
+(wait = rootdelay + 30 s).
+HELPEOF
+}

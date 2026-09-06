@@ -1,0 +1,57 @@
+# Omarchy Pi 5 (ARM64) "other" package list — replaces install/omarchy-other.packages
+# Same role as upstream x86 list: packages installed outside the main pacstrap,
+# kernel, firmware, drivers, and optional hardware stacks. ARM64/Pi 5 edition.
+# VERIFIED 2026-09-06 against live ALARM databases.
+
+# --- Base ---
+base
+base-devel
+
+# --- Kernel & firmware (Pi 5) ---
+linux-rpi
+linux-rpi-headers
+raspberrypi-bootloader
+raspberrypi-overlays
+raspberrypi-utils
+firmware-raspberrypi
+rpi5-eeprom
+linux-firmware
+wireless-regdb
+
+# --- Display / GPU ---
+mesa
+vulkan-broadcom
+vulkan-icd-loader
+vulkan-tools
+
+# --- Audio ---
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+gst-plugin-pipewire
+
+# --- Desktop plumbing ---
+egl-wayland
+gtk4-layer-shell
+qt6-wayland
+xdg-desktop-portal-gtk
+xdg-desktop-portal-hyprland
+webp-pixbuf-loader
+
+# --- Snapshots (x86 Limine removed) ---
+snapper
+btrfs-progs
+
+# --- Networking / firewall ---
+networkmanager
+ufw
+avahi
+nss-mdns
+
+# --- Multi-arch replacements for x86-only upstream entries ---
+# (replaces: nvidia-*, intel-media-driver, libva-intel-driver, libvpl, vpl-gpu-rt,
+#            vulkan-intel, vulkan-radeon, vulkan-asahi, sof-firmware, thermald,
+#            intel-lpmd, linux-ptl, linux-t2, apple-*, dell-*, asus*, tuxedo-*,
+#            broadcom-wl, linux-firmware-marvell, yt6801-dkms, macbook12-spi-driver-dkms)
+# Full exclusion traceability: see build/packages/drop.txt

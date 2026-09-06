@@ -1,0 +1,18 @@
+[Unit]
+Description=Omarchy ARM64 first-boot expansion and Omarchy install (Pi 5)
+Documentation=https://github.com/rbz840/omarchy
+ConditionPathExists=/var/lib/omarchy-firstboot-pi/firstboot-pending
+After=local-fs.target systemd-udevd.service
+Wants=network-online.target
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/omarchy/install/pi/firstboot-entrypoint.sh
+RemainAfterExit=no
+TimeoutStartSec=0
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,28 @@
+# build/packages/aur.txt — AUR packages required on ARM64 Pi 5.
+# Installed by install/pi/05-pi-specific.sh via yay after 04-user.sh creates
+# the build user. VERIFIED 2026-09-06 via the AUR RPC API
+# (tests/check-aur-availability.sh).
+
+# Omarchy ecosystem tools (AUR, arch-agnostic)
+aether
+herdr
+tensaku
+cliamp
+localsend
+xdg-terminal-exec
+ttf-ia-writer
+tzupdate
+yaru-icon-theme
+mise-bin
+ufw-docker
+yay
+
+# Only -git variants exist for these (no stable AUR package)
+hyprland-preview-share-picker-git
+pinta-git
+
+# Note: 'yay' is also AUR. Everything else in the Omarchy ARM64 package set
+# comes from the ALARM repos (see build/packages/omarchy-pi5-*.packages).
+# Ghost packages removed on 2026-09-06 (absent from AUR AND ALARM repos,
+# not shipped in the repo's bin/ either): asdcontrol omacalc omacut omawrite
+# omarchy-nvim tobi-try ttfx — see build/packages/drop.txt.

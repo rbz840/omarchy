@@ -1,0 +1,7 @@
+#!/bin/bash
+# omarchy:summary=Detect whether the machine is a Raspberry Pi 5 (BCM2712, aarch64).
+[[ $(uname -m) == "aarch64" ]] &&
+{
+  grep -q "bcm2712" /proc/device-tree/compatible 2>/dev/null ||
+  grep -q "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null
+}

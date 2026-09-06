@@ -1,0 +1,6 @@
+# Omarchy ARM64 Pi 5 — udev rules.
+# Keep the firmware ESP unmounted/rw only when the user asks for kernel updates:
+# the ESP (vfat, /dev/mmcblk0p1 or nvme0n1p1) is exposed but not auto-mounted.
+
+# Never automount the ESP (handled explicitly by /etc/fstab with ro by default)
+ACTION=="add|change", SUBSYSTEM=="block", ENV{ID_FS_USAGE}=="filesystem", ENV{ID_PART_ENTRY_NUMBER}=="1", ENV{UDISKS_AUTO}="0"

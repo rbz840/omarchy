@@ -1,0 +1,45 @@
+#!/bin/bash
+# bin/omarchy-firstboot-pi — manual trigger / status for the Pi 5 firstboot flow.
+#
+# Normally run automatically by omarchy-firstboot-pi.service on first boot.
+# Can also be invoked manually:
+#   sudo omarchy-firstboot-pi status    → show stage markers + last log lines
+#   sudo omarchy-firstboot-pi rerun     → force-rerun all stages (FORCE_STAGE=1)
+#   sudo omarchy-firstboot-pi logs      → tail the install log
+#
+# Omarchy metadata: omarchy:hidden=true
+
+set -euo pipefail
+
+OMARCHY_ARM_ROOT="${OMARCHY_ARM_ROOT:-/opt/omarchy}"
+STATE_DIR="/var/lib/omarchy-firstboot-pi"
+STAGES_DIR="$STATE_DIR/stages"
+LOG="$STATE_DIR/logs/install.log"
+
+case "${1:-status}" in
+  status)
+    echo "Omarchy ARM64 firstboot status (Pi 5)"
+    echo "  State dir:   $STATE_DIR"
+    echo "  Pending:     $([[ -f $STATE_DIR/firstboot-pending ]] && echo yes || echo no)"
+    echo "  Rootfs exp.: $([[ -f $STATE_DIR/rootfs-expanded ]] && echo done || echo pending)"
+    echo "  Stages:"
+    for s in 01-detect 02-partition 03-pacstrap 04-user 05-pi-specific 06-post-install; do
+      if [[ -f "$STAGES_DIR/$s.sh.done" ]]; then
+        echo "    [x] $s"
+      else
+        echo "    [ ] $s"
+      fi
+    done
+    ;;
+  rerun)
+    export FORCE_STAGE=1
+    exec "$OMARCHY_ARM_ROOT/install/pi/firstboot-entrypoint.sh"
+    ;;
+  logs)
+    tail -n 100 "$LOG" 2>/dev/null || echo "No log yet."
+    ;;
+  *)
+    echo "Usage: omarchy-firstboot-pi {status|rerun|logs}"
+    exit 1
+    ;;
+esac

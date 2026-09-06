@@ -1,0 +1,10 @@
+# Omarchy ARM64 Pi 5 fstab — template.
+# install/pi/02-partition.sh rewrites /etc/fstab with the real partition UUIDs
+# on first boot (blkid of the running root device).
+# The ESP carries the firmware boot files; it is mounted rw so kernel updates
+# can land, and synced/remounted carefully by install/pi/06-post-install.sh.
+
+# <device>            <mount> <type>  <options>                          <dump> <pass>
+UUID=ROOTFS-UUID     /       ext4    rw,relatime                        0      1
+UUID=BOOT-UUID       /boot   vfat    rw,relatime,fmask=0022,dmask=0022  0      2
+tmpfs                /tmp    tmpfs   rw,nosuid,nodev,size=2g            0      0

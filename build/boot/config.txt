@@ -1,0 +1,40 @@
+# Omarchy ARM64 — Raspberry Pi 5 boot configuration
+# Placed at the root of the ESP (partition 1, FAT32) by build/build.sh
+# and maintained by install/pi/04-pi-specific.sh.
+#
+# Reference: https://www.raspberrypi.com/documentation/computers/config_txt.html
+
+## Firmware selection: use the Pi 5 dedicated firmware (kernel_2712.img).
+## The GPU firmware stage (start.elf) is embedded in the EEPROM on Pi 5;
+## no armstub/start.elf lines are needed or wanted here.
+device_tree=bcm2712-rpi-5-b.dtb
+kernel=kernel_2712.img
+
+## Memory / firmware
+gpu_mem=128
+disable_overscan=1
+
+## Display: force KMS driver (vc4-kms-v3d-pi5 overlay), no legacy firmware KMS
+dtoverlay=vc4-kms-v3d-pi5
+
+## PCIe (NVMe / HATs)
+dtparam=pciex1
+
+## Audio (onboard PWM/I2S + HDMI via VC4)
+dtparam=audio=on
+
+## Cooling: official Pi 5 fan (PWM) — engages progressively from 60 °C
+dtparam=fan_temp0=60000
+dtparam=fan_temp0_hyst=10000
+dtparam=fan_temp0_speed=255
+dtparam=fan_temp1=67500
+dtparam=fan_temp1_hyst=10000
+dtparam=fan_temp1_speed=255
+
+## Console on HDMI (before KMS takes over) + serial debug (3.3V, 115200 8N1)
+enable_uart=1
+
+## Omarchy ARM64 additions
+## - The firmware reads cmdline.txt automatically (kernel command line).
+## - Boot order (SD -> USB -> NVMe) is managed by the EEPROM via
+##   `rpi-eeprom-config` or Raspberry Pi Imager; no config.txt override needed.
