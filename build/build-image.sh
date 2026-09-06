@@ -104,7 +104,7 @@ if (( BUILD_IMG )); then
 
   # 3. Filesystems ------------------------------------------------------------
   log "Creating filesystems"
-  mkfs.vfat -F 32 -n OMARCHY_BOOT "${LOOPDEV}p1"
+  mkfs.vfat -F 32 -n OMARCHYBOOT "${LOOPDEV}p1"   # FAT label limit: 11 chars
   mkfs.ext4 -q -L omarchy-root "${LOOPDEV}p2"
 
   # 4. Rootfs assembly --------------------------------------------------------
