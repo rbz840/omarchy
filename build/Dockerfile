@@ -1,18 +1,45 @@
 # syntax=docker/dockerfile:1
 # Omarchy ARM64 image builder container.
 #
-# Build context: repository root. The container runs the actual image
-# assembly (partitioning, pacstrap, firstboot wiring). When invoked with
-# `--platform linux/arm64` (the default path in build/build.sh on x86_64
-# hosts), the whole build runs under QEMU user emulation via Docker
-# binfmt — no cross-compile toolchain needed on the host.
+# The container runs the actual image assembly (partitioning, pacstrap,
+# firstboot wiring) under `--platform linux/arm64`: emulated via QEMU binfmt
+# on x86_64 hosts, native on aarch64 hosts (ARM CI runners, Pi 5).
 #
-# On native aarch64 hosts (Pi 5, ARM CI runners) the same Dockerfile is
-# used without emulation.
+# Base image note: there is NO official Arch Linux arm64 container image —
+# verified 2026-09-06 against both registries:
+#   ghcr.io/archlinux/archlinux        -> amd64-only single-arch manifest
+#   docker.io/library/archlinux        -> amd64 (+ attestation) index only
+# So the builder base is bootstrapped from the Arch Linux ARM rootfs tarball:
+# a multi-arch debian helper stage downloads + md5-verifies + extracts it,
+# and the builder stage is FROM scratch with that rootfs COPYied in.
+#
+# Build context: repository root.
 
-FROM archlinux:base-devel
+# --- Stage 1: fetch + extract the ALARM aarch64 rootfs (any host arch) --------
+FROM debian:stable-slim AS alarm-rootfs
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      curl ca-certificates gzip tar findutils coreutils \
+ && rm -rf /var/lib/apt/lists/*
+# ADD cannot extract remote tarballs, so download first, then extract.
+# md5 verification pins the artifact against ALARM's published checksum.
+RUN curl -fsSL --retry 5 -o /tmp/alarm.tar.gz \
+      http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz \
+ && curl -fsSL --retry 5 -o /tmp/alarm.tar.gz.md5 \
+      http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz.md5 \
+ && cd /tmp \
+ && md5sum -c alarm.tar.gz.md5 \
+ && mkdir -p /alarm-root \
+ && tar -xzf /tmp/alarm.tar.gz -C /alarm-root --numeric-owner \
+ && rm -f /tmp/alarm.tar.gz /tmp/alarm.tar.gz.md5
 
-# Retry-friendly pacman setup for container bootstrap
+# --- Stage 2: the builder = the ALARM aarch64 rootfs ---------------------------
+FROM scratch
+COPY --from=alarm-rootfs /alarm-root/ /
+
+ENV LANG=C.UTF-8
+
+# Retry-friendly pacman setup for container bootstrap (ALARM repos)
 RUN pacman-key --init \
  && pacman -Syu --noconfirm --needed \
       arch-install-scripts \
