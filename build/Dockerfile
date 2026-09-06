@@ -40,6 +40,17 @@ COPY --from=alarm-rootfs /alarm-root/ /
 
 ENV LANG=C.UTF-8
 
+# Import + locally sign the ALARM signing keys BEFORE the first pacman -Syu.
+# The rootfs tarball ships /usr/share/pacman/keyrings/archlinuxarm.gpg and its
+# archlinuxarm-trusted list; --populate imports the keyring and gives the
+# trusted keys ownertrust. Without this, every package fails with
+# "signature from \"Arch Linux ARM Build System\" ... is unknown trust"
+# (observed 2026-09-06, run 34045511921): the key being present in the
+# keyring is NOT enough — pacman requires local trust/ownertrust.
+# --populate is the official ALARM bootstrap step (archlinuxarm wiki).
+RUN pacman-key --init \
+ && pacman-key --populate archlinuxarm
+
 # Retry-friendly pacman setup for container bootstrap (ALARM repos).
 # DisableSandbox: pacman 6.1+ sandboxes DB syncs with Landlock + the 'alpm'
 # user, which BuildKit's seccomp profile blocks ("Landlock ruleset could not
@@ -53,7 +64,6 @@ ENV LANG=C.UTF-8
 # cross-run reuse.
 RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
  && printf '\n# pacman -Sc/-Scc must never wipe a host-mounted cache dir\n# (see build/build.sh --pkg-cache)\n' >> /etc/pacman.conf \
- && pacman-key --init \
  && pacman -Syu --noconfirm --needed \
       arch-install-scripts \
       dosfstools \
@@ -70,17 +80,6 @@ RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
 # NOTE: no `archiso` here — ALARM does not package it (verified 2026-09-06,
 # "target not found: archiso"); the optional ISO build (build-image.sh step 6)
 # detects that and skips with a warning. The .img is the primary deliverable.
-
-# Import the Arch Linux ARM build-system signing key into the container
-# keyring. pacstrap copies this keyring into the target rootfs, which lets
-# ALARM-signed packages verify from the very first install.
-# Key: 68B3537F39A313B3E574D06777193F152BDBE6A6 (Arch Linux ARM Build System)
-RUN pacman-key --init \
- && (pacman-key -r 68B3537F39A313B3E574D06777193F152BDBE6A6 \
-        --keyserver hkps://keyserver.ubuntu.com \
-     || pacman-key -r 68B3537F39A313B3E574D06777193F152BDBE6A6 \
-        --keyserver hkps://keys.openpgp.org) \
- && pacman-key --lsign-key 68B3537F39A313B3E574D06777193F152BDBE6A6
 
 COPY . /omarchy-arm
 WORKDIR /omarchy-arm
