@@ -50,6 +50,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Make p1/p2 visible for $LOOPDEV. losetup --partscan fails to create the
+# partition block devices when the host loaded the loop module with
+# max_part=0 (observed on hosted CI runners). Strategy: retry a few seconds
+# (slow udev), then re-read the table (partprobe), then add the partitions
+# via BLKPG ioctls (partx -a) which works independently of max_part.
+ensure_loop_partitions() {
+  local dev="$1" i
+  for i in 1 2 3 4 5; do
+    [[ -e "${dev}p1" && -e "${dev}p2" ]] && return 0
+    sleep 1
+  done
+  partprobe "$dev" 2>/dev/null || true
+  [[ -e "${dev}p1" && -e "${dev}p2" ]] && return 0
+  partx -a "$dev" 2>/dev/null || true
+  [[ -e "${dev}p1" && -e "${dev}p2" ]]
+}
+
 mkdir -p "$OUTPUT_DIR"
 
 # 1. Create image -------------------------------------------------------------
@@ -70,7 +87,8 @@ if (( BUILD_IMG )); then
   # Attach a loop device with partition scanning
   LOOPDEV=$(losetup --find --show --partscan "$IMG")
   log "Loop device: $LOOPDEV"
-  [[ -e "${LOOPDEV}p1" ]] || die "Partition nodes not visible (kernel loop partscan issue)"
+  ensure_loop_partitions "$LOOPDEV" \
+    || die "Partition nodes not visible after losetup --partscan, partprobe and partx -a"
 
   # 3. Filesystems ------------------------------------------------------------
   log "Creating filesystems"
