@@ -64,7 +64,12 @@ brouillon) et publie :
 - un **artefact de workflow** (rétention 14 jours) pour les builds de test.
 
 Le chemin de build est identique à un build local (Docker builder aarch64 natif —
-pas d'émulation QEMU), ce qui garantit la reproductibilité CI/local. Pour un
+pas d'émulation QEMU), ce qui garantit la reproductibilité CI/local. Les paquets
+pacman téléchargés pendant le pacstrap sont mis en cache entre les runs
+(`actions/cache`, clé = hash de `build/packages/*.packages`) et montés dans le
+builder via `build.sh --pkg-cache` : un build hebdomadaire ne retélécharge que
+les paquets réellement modifiés. En local, passez simplement
+`--pkg-cache ~/.cache/omarchy-pacman` pour le même effet. Pour un
 build manuel :
 
 ## 5. Zones prioritaires (bon premiers PR)

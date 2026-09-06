@@ -13,6 +13,10 @@
 #   --output DIR        Directory for the resulting .img (default: ./out)
 #   --size SIZE         Image size before firstboot expansion (default: 16G)
 #   --name NAME         Image basename (default: omarchy-arm64-rpi5-YYYYMMDD)
+#   --pkg-cache DIR     Reuse DIR as the pacman package cache inside the builder
+#                       (bind-mounted at /var/cache/pacman/pkg). Populated
+#                       across runs -> re-downloads skipped. DIR is created if
+#                       missing and filled by root: chown it after --native runs.
 #   --no-iso            Skip the experimental archiso build
 #   --iso-only          Only build the experimental ISO, skip the .img
 #   --native            Build natively on the current machine (requires aarch64
@@ -39,6 +43,7 @@ BUILD_ISO=1
 BUILD_IMG=1
 NATIVE=0
 KEEP_CONTAINER=0
+PKG_CACHE=""
 CONTAINER_ENGINE=""
 [[ -n "${CONTAINER_ENGINE_ENV:-}" ]] && CONTAINER_ENGINE="$CONTAINER_ENGINE_ENV"
 
@@ -53,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --output)         OUTPUT_DIR="$2"; shift 2 ;;
     --size)           SIZE="$2"; shift 2 ;;
     --name)           NAME="$2"; shift 2 ;;
+    --pkg-cache)      PKG_CACHE="$2"; shift 2 ;;
     --no-iso)         BUILD_ISO=0; shift ;;
     --iso-only)       BUILD_IMG=0; shift ;;
     --native)         NATIVE=1; shift ;;
@@ -118,6 +124,16 @@ RUN_ARGS=(
   -v "$REPO_ROOT:/omarchy-arm:ro"
   "$IMAGE_TAG"
 )
+
+# Persistent pacman package cache (CI + repeat local builds): bind-mount a
+# host directory at the container's package cache. The container runs as root,
+# so it can write into a host-owned dir; the builder image itself must NOT
+# wipe the cache (see build/Dockerfile: `pacman -Sc`, not `-Scc`).
+if [[ -n "$PKG_CACHE" ]]; then
+  mkdir -p "$PKG_CACHE"
+  log "Pacman package cache: $PKG_CACHE ($(find "$PKG_CACHE" -name '*.pkg.tar.*' 2>/dev/null | wc -l) packages, $(du -sh "$PKG_CACHE" 2>/dev/null | cut -f1))"
+  RUN_ARGS=( "${RUN_ARGS[@]:0:${#RUN_ARGS[@]}-1}" -v "$PKG_CACHE:/var/cache/pacman/pkg" "$IMAGE_TAG" )
+fi
 
 log "Running image assembly in aarch64 container"
 case "$CONTAINER_ENGINE" in

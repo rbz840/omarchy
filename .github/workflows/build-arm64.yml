@@ -13,6 +13,11 @@ name: Build ARM64 image (Raspberry Pi 5)
 #   GitHub's 2 GiB per-file release asset limit.
 # - Outputs: a release tagged vYYYY.MM.DD with the .img.zst + .sha256 assets,
 #   plus a workflow artifact (14-day retention).
+# - Pacman package cache: ALARM packages fetched during pacstrap are cached
+#   via actions/cache (key = hash of build/packages/*.packages) and passed to
+#   the builder with build.sh --pkg-cache, so weekly builds skip re-downloads.
+#   ~2-5 min saved on warm runs, plus fewer hits on ALARM mirrors. The cache
+#   (~1-2 GB) stays well under GitHub's 10 GB-per-repo limit.
 
 on:
   schedule:
@@ -32,6 +37,10 @@ env:
   IMAGE_SIZE: "8G"
   IMAGE_NAME: omarchy-arm64-rpi5
   ZSTD_LEVEL: "9"
+  # Persistent pacman download cache for pacstrap (host-side path, mounted
+  # into the builder container by build.sh --pkg-cache and cached between
+  # workflow runs by the restore/save steps around the build).
+  PKG_CACHE_DIR: /home/runner/pacman-pkg-cache
 
 jobs:
   build:
@@ -66,6 +75,14 @@ jobs:
           # qemu-system-arm: qemu-system-aarch64 for tests/qemu-esp-restore-test.sh
           sudo apt-get install -y --no-install-recommends zstd curl jq cpio qemu-system-arm
 
+      - name: Restore pacman package cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.PKG_CACHE_DIR }}
+          key: pacman-pkg-${{ runner.os }}-arm-${{ hashFiles('build/packages/*.packages') }}
+          restore-keys: |
+            pacman-pkg-${{ runner.os }}-arm-
+
       - name: Package availability checks (fail fast)
         run: |
           set -euo pipefail
@@ -86,6 +103,7 @@ jobs:
             --output "$GITHUB_WORKSPACE/out" \
             --size "$IMAGE_SIZE" \
             --name "$IMG_NAME" \
+            --pkg-cache "$PKG_CACHE_DIR" \
             --no-iso
 
       - name: Fix ownership of build outputs
@@ -93,6 +111,13 @@ jobs:
           [[ -d out ]] || { echo "FATAL: out/ not created" >&2; exit 1; }
           sudo chown -R "$(id -u):$(id -g)" out
           ls -lh out
+
+      - name: Save pacman package cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.PKG_CACHE_DIR }}
+          key: pacman-pkg-${{ runner.os }}-arm-${{ hashFiles('build/packages/*.packages') }}
 
       - name: Verify image contents (release gate)
         run: |

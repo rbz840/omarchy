@@ -45,7 +45,14 @@ ENV LANG=C.UTF-8
 # user, which BuildKit's seccomp profile blocks ("Landlock ruleset could not
 # be applied") — we run as root in a throwaway build container, so the
 # sandbox buys nothing. No `|| true`: a failed pacman must fail the build.
+#
+# Package cache: the builder may run with a host directory bind-mounted at
+# /var/cache/pacman/pkg (build/build.sh --pkg-cache) to reuse packages across
+# runs. Cleanup is therefore `pacman -Sc` (removes only packages no longer
+# installed) and NEVER `-Scc`, which would wipe the mounted cache and defeat
+# cross-run reuse.
 RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
+ && printf '\n# pacman -Sc/-Scc must never wipe a host-mounted cache dir\n# (see build/build.sh --pkg-cache)\n' >> /etc/pacman.conf \
  && pacman-key --init \
  && pacman -Syu --noconfirm --needed \
       arch-install-scripts \
@@ -58,7 +65,7 @@ RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
       git \
       curl \
       jq \
- && pacman -Scc --noconfirm
+ && pacman -Sc --noconfirm
 
 # NOTE: no `archiso` here — ALARM does not package it (verified 2026-09-06,
 # "target not found: archiso"); the optional ISO build (build-image.sh step 6)

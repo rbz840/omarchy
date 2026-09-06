@@ -216,8 +216,11 @@ omarchy-firstboot-pi rerun                         # rejouer l'installation
 Workflow GitHub Actions sur runner `ubuntu-24.04-arm` : build hebdomadaire de
 l'image, checks de disponibilité paquets pré-build, gate de contenu, test QEMU
 d'auto-réparation ESP, checksums SHA256 et release (voir
-[`docs/05-contributing.md`](docs/05-contributing.md) §4). Les tests matériels
-restent manuels (communauté) — un label `tested-on-pi5` est suggéré pour les PR.
+[`docs/05-contributing.md`](docs/05-contributing.md) §4). Le cache pacman
+(`actions/cache` autour du build, monté via `build.sh --pkg-cache`) évite de
+retélécharger les paquets ALARM inchangés d'une semaine sur l'autre. Les tests
+matériels restent manuels (communauté) — un label `tested-on-pi5` est suggéré
+pour les PR.
 
 ---
 
