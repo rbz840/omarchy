@@ -25,7 +25,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_DIR="$REPO_ROOT/out"
+OUT_DIR=""
 OMIT_CMDLINE=0 OMIT_HOOK=0 OMIT_DTB=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,9 +33,11 @@ while [[ $# -gt 0 ]]; do
     --omit-hook)    OMIT_HOOK=1;    shift ;;
     --omit-dtb)     OMIT_DTB=1;     shift ;;
     -h|--help) grep '^# \|^#$' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "unknown option: $1" >&2; exit 2 ;;
+    -*) echo "unknown option: $1" >&2; exit 2 ;;
+    *) OUT_DIR="$1"; shift ;;   # positional: output directory
   esac
 done
+: "${OUT_DIR:=$REPO_ROOT/out}"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 FIXTURE="$OUT_DIR/fixture.img"
