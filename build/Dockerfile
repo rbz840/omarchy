@@ -49,7 +49,6 @@ RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
  && pacman-key --init \
  && pacman -Syu --noconfirm --needed \
       arch-install-scripts \
-      archiso \
       dosfstools \
       e2fsprogs \
       parted \
@@ -60,6 +59,10 @@ RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
       curl \
       jq \
  && pacman -Scc --noconfirm
+
+# NOTE: no `archiso` here — ALARM does not package it (verified 2026-09-06,
+# "target not found: archiso"); the optional ISO build (build-image.sh step 6)
+# detects that and skips with a warning. The .img is the primary deliverable.
 
 # Import the Arch Linux ARM build-system signing key into the container
 # keyring. pacstrap copies this keyring into the target rootfs, which lets

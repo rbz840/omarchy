@@ -155,8 +155,10 @@ if (( BUILD_IMG )); then
 
   # 6. Optional archiso build -------------------------------------------------
   if (( BUILD_ISO )); then
-    log "Building experimental archiso aarch64 ISO (build/archiso/)"
-    if [[ -d "$REPO/build/archiso" ]]; then
+    if ! command -v mkarchiso >/dev/null 2>&1; then
+      warn "mkarchiso not available (archiso is not packaged in ALARM repos) — ISO build skipped; the .img is the primary deliverable"
+    elif [[ -d "$REPO/build/archiso" ]]; then
+      log "Building experimental archiso aarch64 ISO (build/archiso/)"
       mkarchiso -v -w /tmp/archiso-work -o "$OUTPUT_DIR" "$REPO/build/archiso/releng-omarchy-aarch64" \
         || warn "archiso build failed (non-fatal; the .img is the primary deliverable)"
     else
