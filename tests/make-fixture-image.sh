@@ -134,6 +134,8 @@ umount "$MNT"
 mkfs.ext4 -q -L omarchy-root "${LOOP}p2" || die "mkfs.ext4 failed"
 
 log "Fixture written: $FIXTURE"
-[[ $OMIT_CMDLINE -eq 1 ]] && log "  (negative fixture: cmdline.txt omitted)"
-[[ $OMIT_HOOK    -eq 1 ]] && log "  (negative fixture: omarchy-pi-esp hook omitted)"
-[[ $OMIT_DTB     -eq 1 ]] && log "  (negative fixture: bcm2712 DTBs omitted)"
+# NOTE: if/then, not "[[ ]] && cmd" — the && form returns 1 when the test is
+# false and set -e kills the script after the last line (seen live in CI).
+if (( OMIT_CMDLINE )); then log "  (negative fixture: cmdline.txt omitted)"; fi
+if (( OMIT_HOOK ));    then log "  (negative fixture: omarchy-pi-esp hook omitted)"; fi
+if (( OMIT_DTB ));     then log "  (negative fixture: bcm2712 DTBs omitted)"; fi
