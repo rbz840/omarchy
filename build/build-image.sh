@@ -161,7 +161,8 @@ if (( BUILD_IMG )); then
   # a template is shipped in build/rootfs/etc/fstab.pi-template.
 
   # 4.5 Regenerate the initramfs INSIDE the rootfs so the omarchy-pi-esp hook
-  # and forced modules (virtio/ext4/nvme/mmc_block) are actually embedded —
+  # and forced modules (ext4/nvme/mmc_block/usb/xhci/sdhci) are actually
+  # embedded —
   # pacstrap's initramfs predates the 4.3 overlay and would ship without them.
   log "Regenerating initramfs (omarchy-pi-esp hook + forced modules)"
   arch-chroot "$ROOT" mkinitcpio -P \

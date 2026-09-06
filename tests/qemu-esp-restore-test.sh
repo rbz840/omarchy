@@ -8,8 +8,8 @@
 #           -> expect "omarchy-pi-esp: ESP verified, no repair needed"
 #   Host    delete cmdline.txt from the ESP (partition 1)
 #   Boot 2  same boot, ESP missing cmdline.txt
-#           -> expect "omarchy-pi-esp: RESTORED missing cmdline.txt (root=/dev/vda2)"
-#   Host    verify cmdline.txt exists again on the ESP, carrying root=/dev/vda2
+#           -> expect "omarchy-pi-esp: RESTORED missing cmdline.txt (root=/dev/sda2)"
+#   Host    verify cmdline.txt exists again on the ESP, carrying root=/dev/sda2
 #
 # Why -kernel/-initrd instead of UEFI: the image's ESP carries Pi-firmware
 # boot files (config.txt + kernel_2712.img), not an EFI bootloader, so QEMU's
@@ -19,8 +19,12 @@
 # The kernel cmdline comes from -append (QEMU), not the ESP — exactly like
 # the Pi, where firmware hands the kernel its cmdline — so a deleted ESP
 # cmdline.txt does not block booting; it only removes the file the hook must
-# restore. root=/dev/vda2 (virtio) additionally proves the hook rewrites
-# root= to the ACTUAL boot medium rather than parroting the SD-card template.
+# restore. The disk is attached as a USB mass-storage device (qemu-xhci +
+# usb-storage): linux-rpi has NO virtio drivers (Pi hardware has none, and
+# force-adding virtio modules fails mkinitcpio — CI run 34048432400), while
+# USB is the Pi's real USB-boot path and IS in the initramfs. root=/dev/sda2
+# additionally proves the hook rewrites root= to the ACTUAL boot medium
+# rather than parroting the SD-card template.
 #
 # Requirements: qemu-system-aarch64; root (losetup/mount). Runs in CI on
 # ubuntu-24.04-arm (tcg software emulation; the hook under test runs in early
@@ -87,6 +91,20 @@ save_logs() {
 
 attach_loop() {
   LOOP=$(losetup --find --show --partscan "$WORK/test.img") || die "losetup failed"
+  # Hosted runners may load the loop module with max_part=0: partscan creates
+  # no partition nodes. Kernel-side partitions appear under /sys either way —
+  # materialize the /dev nodes from major:minor when missing.
+  if [[ ! -e "${LOOP}p1" || ! -e "${LOOP}p2" ]]; then
+    partprobe "$LOOP" 2>/dev/null; partx -a "$LOOP" 2>/dev/null || true
+  fi
+  local base="${LOOP##*/}" sp maj
+  for sp in "/sys/block/$base/$base"p1 "/sys/block/$base/$base"p2; do
+    [[ -e "${LOOP}${sp##*/$base}" ]] && continue
+    [[ -r "$sp/dev" ]] || die "partition node missing and no sysfs entry: $sp"
+    maj="$(cat "$sp/dev")"
+    mknod "${LOOP}${sp##*/$base}" b "${maj%%:*}" "${maj##*:}" || die "mknod ${LOOP}${sp##*/$base} failed"
+    chmod 660 "${LOOP}${sp##*/$base}"
+  done
   [[ -e "${LOOP}p1" && -e "${LOOP}p2" ]] || die "expected ${LOOP}p1/p2 partitions"
 }
 detach_loop() {
@@ -101,13 +119,17 @@ run_boot() {  # $1 = boot number, $2 = expected console marker
   # -kernel/-initrd/-append: direct boot of the image's real kernel+initramfs
   # (rationale in the header). panic=-1 + -no-reboot: any panic exits QEMU
   # instead of hanging. systemd.unit=multi-user.target: skip the desktop.
+  # Disk on a USB bus (qemu-xhci + usb-storage): linux-rpi ships no virtio
+  # drivers; usb-storage + xhci_pci are force-included in the initramfs and
+  # mirror the Pi's real USB-boot path.
   timeout --foreground "$QEMU_TIMEOUT_S" "$QEMU_BIN" \
       -machine virt -m 1024 -smp 2 \
       "${QEMU_ACCEL[@]}" \
       -kernel "$WORK/kernel.img" \
       -initrd "$WORK/initrd.img" \
-      -append "root=/dev/vda2 rw rootwait console=ttyAMA0 panic=-1 systemd.unit=multi-user.target" \
-      -drive "file=$WORK/test.img,format=raw,if=virtio" \
+      -append "root=/dev/sda2 rw rootwait console=ttyAMA0 panic=-1 systemd.unit=multi-user.target" \
+      -drive "id=usbdrv,file=$WORK/test.img,format=raw,if=none" \
+      -device qemu-xhci -device usb-storage,drive=usbdrv \
       -display none -serial "file:$WORK/boot$n.log" -no-reboot \
       >"$WORK/qemu$n.out" 2>&1
   # We deliberately do NOT require a clean shutdown: the behavior under test
@@ -172,11 +194,11 @@ detach_loop
 ok "cmdline.txt deleted"
 
 # --- 4. Boot 2: broken ESP --------------------------------------------------------
-log "Boot 2: ESP missing cmdline.txt — expect RESTORED marker with root=/dev/vda2"
-if run_boot 2 "omarchy-pi-esp: RESTORED missing cmdline.txt (root=/dev/vda2)"; then
+log "Boot 2: ESP missing cmdline.txt — expect RESTORED marker with root=/dev/sda2"
+if run_boot 2 "omarchy-pi-esp: RESTORED missing cmdline.txt (root=/dev/sda2)"; then
   ok "Boot 2: hook restored cmdline.txt, rewriting root= to the real boot medium"
 else
-  bad "Boot 2: expected RESTORED marker (root=/dev/vda2) in console log:"
+  bad "Boot 2: expected RESTORED marker (root=/dev/sda2) in console log:"
   show_hook_lines "$WORK/boot2.log"
   save_logs
   die "Boot 2 failed (logs copied to $LOGDIR)"
@@ -189,10 +211,10 @@ mount -o ro "${LOOP}p1" "$MNT_ESP" || { detach_loop; die "cannot mount ESP after
 verify_failed=0
 if [[ -s "$MNT_ESP/cmdline.txt" ]]; then
   ok "cmdline.txt present again ($(wc -c < "$MNT_ESP/cmdline.txt") bytes)"
-  if grep -q "root=/dev/vda2" "$MNT_ESP/cmdline.txt"; then
-    ok "restored cmdline.txt carries the ACTUAL boot medium (root=/dev/vda2)"
+  if grep -q "root=/dev/sda2" "$MNT_ESP/cmdline.txt"; then
+    ok "restored cmdline.txt carries the ACTUAL boot medium (root=/dev/sda2)"
   else
-    bad "restored cmdline.txt lacks root=/dev/vda2:"
+    bad "restored cmdline.txt lacks root=/dev/sda2:"
     sed 's/^/       /' "$MNT_ESP/cmdline.txt" >&2
     verify_failed=1
   fi
