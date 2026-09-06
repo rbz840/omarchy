@@ -22,16 +22,17 @@ RUN apt-get update \
       curl ca-certificates gzip tar findutils coreutils \
  && rm -rf /var/lib/apt/lists/*
 # ADD cannot extract remote tarballs, so download first, then extract.
-# md5 verification pins the artifact against ALARM's published checksum.
-RUN curl -fsSL --retry 5 -o /tmp/alarm.tar.gz \
+# Keep ALARM's canonical filename: the .md5 references it by name, so
+# `md5sum -c` fails if we save the download under a different name.
+RUN curl -fsSL --retry 5 -o /tmp/ArchLinuxARM-aarch64-latest.tar.gz \
       http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz \
- && curl -fsSL --retry 5 -o /tmp/alarm.tar.gz.md5 \
+ && curl -fsSL --retry 5 -o /tmp/ArchLinuxARM-aarch64-latest.tar.gz.md5 \
       http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz.md5 \
  && cd /tmp \
- && md5sum -c alarm.tar.gz.md5 \
+ && md5sum -c ArchLinuxARM-aarch64-latest.tar.gz.md5 \
  && mkdir -p /alarm-root \
- && tar -xzf /tmp/alarm.tar.gz -C /alarm-root --numeric-owner \
- && rm -f /tmp/alarm.tar.gz /tmp/alarm.tar.gz.md5
+ && tar -xzf /tmp/ArchLinuxARM-aarch64-latest.tar.gz -C /alarm-root --numeric-owner \
+ && rm -f /tmp/ArchLinuxARM-aarch64-latest.tar.gz /tmp/ArchLinuxARM-aarch64-latest.tar.gz.md5
 
 # --- Stage 2: the builder = the ALARM aarch64 rootfs ---------------------------
 FROM scratch
