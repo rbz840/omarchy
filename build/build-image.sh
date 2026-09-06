@@ -39,11 +39,25 @@ log()  { printf '\033[1;34m[image]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[image]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[image] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Unmount the rootfs, including any mounts left behind INSIDE it (pacstrap /
+# arch-chroot api mounts: proc, sys, dev, run). umount -R handles children;
+# the lazy fallback is a last resort so a straggler reference never wedges
+# the build after the image itself is complete.
+release_rootfs() {
+  umount -R "$ROOT/boot" 2>/dev/null || true
+  umount -R "$ROOT" 2>/dev/null || true
+  if mountpoint -q "$ROOT" 2>/dev/null; then
+    warn "rootfs still busy — lazy-unmounting stragglers"
+    umount -l -R "$ROOT" 2>/dev/null || true
+    sleep 1
+  fi
+}
+
 # Idempotent cleanup on failure
 cleanup() {
   local rc=$?
   set +e
-  umount "$ROOT/boot" "$ROOT" 2>/dev/null
+  release_rootfs
   losetup -d "$LOOPDEV" 2>/dev/null
   rm -rf "$ROOT"
   exit $rc
@@ -197,9 +211,12 @@ if (( BUILD_IMG )); then
     fi
   fi
 
-  # Detach loop, unmount
-  umount "$ROOT/boot"
-  umount "$ROOT"
-  losetup -d "$LOOPDEV"
+  # Detach loop, unmount (release_rootfs also clears any api mounts left
+  # behind inside the rootfs by pacstrap/arch-chroot)
+  release_rootfs
+  for i in 1 2 3 4 5; do
+    losetup -d "$LOOPDEV" 2>/dev/null && break
+    sleep 1
+  done
   log "Image ready: $IMG"
 fi
